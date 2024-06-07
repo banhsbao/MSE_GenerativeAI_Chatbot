@@ -8,6 +8,8 @@ from langchain_core.messages import HumanMessage, SystemMessage
 VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN")
 PAGE_ACCESS_TOKEN = os.environ.get("PAGE_ACCESS_TOKEN")
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
+VERCEL_KV_URL = os.environ.get("VERCEL_KV_URL")
+VERCEL_KV_TOKEN = os.environ.get("VERCEL_KV_TOKEN")
 
 app = Flask(__name__)
 
@@ -48,6 +50,9 @@ def handle_post(request):
                     if message_text:
                         send_typing_indicator(sender_id, "typing_on")
                         response_text = generate_response(message_text)
+                        store_chat_history(
+                            sender_id, {"user": message_text, "bot": response_text}
+                        )
                         send_message(sender_id, response_text)
                         send_typing_indicator(sender_id, "typing_off")
         return jsonify({"status": 200, "body": "EVENT_RECEIVED"}), 200
@@ -76,6 +81,33 @@ def generate_response(message_text):
     )
     response = llm.invoke([system_message, human_message])
     return response.content
+
+
+def store_chat_history(user_id, message):
+    url = f"{VERCEL_KV_URL}/keys/{user_id}"
+    headers = {
+        "Authorization": f"Bearer {VERCEL_KV_TOKEN}",
+        "Content-Type": "application/json",
+    }
+    current_history = get_chat_history(user_id) or []
+    current_history.append(message)
+    data = {"value": json.dumps(current_history)}
+    response = requests.put(url, headers=headers, data=json.dumps(data))
+    if response.status_code not in [200, 204]:
+        print("Failed to store chat history:", response.status_code, response.text)
+
+
+def get_chat_history(user_id):
+    url = f"{VERCEL_KV_URL}/keys/{user_id}"
+    headers = {"Authorization": f"Bearer {VERCEL_KV_TOKEN}"}
+    response = requests.get(url, headers=headers)
+    if response.status_code == 200:
+        return json.loads(response.json().get("value", "[]"))
+    elif response.status_code == 404:
+        return []
+    else:
+        print("Failed to get chat history:", response.status_code, response.text)
+        return []
 
 
 def send_typing_indicator(recipient_id, action):
