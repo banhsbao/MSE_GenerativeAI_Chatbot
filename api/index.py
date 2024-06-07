@@ -1,23 +1,17 @@
 from flask import Flask, render_template, request, jsonify
-from langchain_openai import ChatOpenAI
 import requests
 import json
 import os
-
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.messages import HumanMessage, SystemMessage
 
 VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN")
 PAGE_ACCESS_TOKEN = os.environ.get("PAGE_ACCESS_TOKEN")
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
 
 app = Flask(__name__)
 
-llm = ChatOpenAI(
-    model="gpt-4o",
-    temperature=0,
-    max_tokens=None,
-    timeout=None,
-    max_retries=2,
-)
+llm = ChatGoogleGenerativeAI(model="gemini-pro", convert_system_message_to_human=True)
 
 
 @app.route("/")
@@ -60,17 +54,22 @@ def handle_post(request):
 
 
 def generate_response(message_text):
-    messages = [
-        (
-            "system",
-            """Sử dụng các thông tin sau đây để trả lời câu hỏi của người dùng.
-            Tất cả câu trả lời của bạn đều phải trả lời bằng tiếng việt
-            """,
-        ),
-        ("human", message_text),
-    ]
-    response = llm.invoke(messages)
-    return response
+    system_message = SystemMessage(
+        content="""
+                Sử dụng các thông tin sau đây để trả lời câu hỏi của người dùng.
+                Tất cả câu trả lời của bạn đều phải trả lời bằng tiếng việt
+                """
+    )
+    human_message = HumanMessage(
+        content=[
+            {
+                "type": "text",
+                "text": message_text,
+            }
+        ]
+    )
+    response = llm.invoke([system_message, human_message])
+    return response.content
 
 
 def send_message(recipient_id, message_text):
