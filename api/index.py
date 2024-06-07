@@ -14,7 +14,7 @@ def hello():
     return "Hello, this is chatbox server"
 
 
-@app.route("/webhook")
+@app.route("/webhook", methods=["GET", "POST"])
 def get_method():
     if request.method == "GET":
         return handle_get(request)
