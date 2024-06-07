@@ -1,17 +1,33 @@
 from flask import Flask, render_template, request, jsonify
 import requests
 import json
-
 import os
+from langchain import LLMChain
+from langchain.chat_models import ChatOpenAI
+from langchain.prompts import ChatPromptTemplate
+from langchain.memory import ConversationBufferMemory
+
 
 VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN")
 PAGE_ACCESS_TOKEN = os.environ.get("PAGE_ACCESS_TOKEN")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+
 app = Flask(__name__)
+
+memory = ConversationBufferMemory()
+prompt_template = ChatPromptTemplate.from_template(
+    "{history}\nHuman: {human_input}\nAI:"
+)
+chain = LLMChain(
+    llm=ChatOpenAI(model="gpt-4", openai_api_key=OPENAI_API_KEY),
+    prompt=prompt_template,
+    memory=memory,
+)
 
 
 @app.route("/")
 def hello():
-    return "Hello, this is chatbox server"
+    return "Hello, world"
 
 
 @app.route("/webhook", methods=["GET", "POST"])
@@ -41,10 +57,16 @@ def handle_post(request):
                     sender_id = messaging_event["sender"]["id"]
                     message_text = messaging_event["message"].get("text")
                     if message_text:
-                        send_message(sender_id, message_text)
+                        response_text = generate_response(message_text)
+                        send_message(sender_id, response_text)
         return jsonify({"status": 200, "body": "EVENT_RECEIVED"}), 200
     except Exception as e:
         return jsonify({"status": 500, "body": str(e)}), 500
+
+
+def generate_response(message_text):
+    response = chain.run(human_input=message_text)
+    return response
 
 
 def send_message(recipient_id, message_text):
@@ -73,3 +95,7 @@ def test():
 def result():
     dict = {"phy": 50, "che": 60, "maths": 70}
     return render_template("result.html", result=dict)
+
+
+if __name__ == "__main__":
+    app.run(debug=True)
