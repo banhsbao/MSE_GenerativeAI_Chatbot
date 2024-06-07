@@ -1,5 +1,4 @@
 Flask
 requests
 langchain
-openai==0.26.5
-langchain-community
+langchain-openai

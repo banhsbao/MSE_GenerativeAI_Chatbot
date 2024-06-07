@@ -1,11 +1,8 @@
 from flask import Flask, render_template, request, jsonify
+from langchain_openai import ChatOpenAI
 import requests
 import json
 import os
-from langchain import LLMChain
-from langchain.chat_models import ChatOpenAI
-from langchain.prompts import ChatPromptTemplate
-from langchain.memory import ConversationBufferMemory
 
 
 VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN")
@@ -14,14 +11,12 @@ OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
 app = Flask(__name__)
 
-memory = ConversationBufferMemory()
-prompt_template = ChatPromptTemplate.from_template(
-    "{history}\nHuman: {human_input}\nAI:"
-)
-chain = LLMChain(
-    llm=ChatOpenAI(model="gpt-4", openai_api_key=OPENAI_API_KEY),
-    prompt=prompt_template,
-    memory=memory,
+llm = ChatOpenAI(
+    model="gpt-4o",
+    temperature=0,
+    max_tokens=None,
+    timeout=None,
+    max_retries=2,
 )
 
 
@@ -65,7 +60,16 @@ def handle_post(request):
 
 
 def generate_response(message_text):
-    response = chain.run(human_input=message_text)
+    messages = [
+        (
+            "system",
+            """Sử dụng các thông tin sau đây để trả lời câu hỏi của người dùng.
+            Tất cả câu trả lời của bạn đều phải trả lời bằng tiếng việt
+            """,
+        ),
+        ("human", message_text),
+    ]
+    response = llm.invoke(messages)
     return response
 
 
