@@ -46,8 +46,10 @@ def handle_post(request):
                     sender_id = messaging_event["sender"]["id"]
                     message_text = messaging_event["message"].get("text")
                     if message_text:
+                        send_typing_indicator(sender_id, "typing_on")
                         response_text = generate_response(message_text)
                         send_message(sender_id, response_text)
+                        send_typing_indicator(sender_id, "typing_off")
         return jsonify({"status": 200, "body": "EVENT_RECEIVED"}), 200
     except Exception as e:
         return jsonify({"status": 500, "body": str(e)}), 500
@@ -70,6 +72,20 @@ def generate_response(message_text):
     )
     response = llm.invoke([system_message, human_message])
     return response.content
+
+
+def send_typing_indicator(recipient_id, action):
+    params = {"access_token": PAGE_ACCESS_TOKEN}
+    headers = {"Content-Type": "application/json"}
+    data = json.dumps({"recipient": {"id": recipient_id}, "sender_action": action})
+    response = requests.post(
+        "https://graph.facebook.com/v12.0/me/messages",
+        params=params,
+        headers=headers,
+        data=data,
+    )
+    if response.status_code != 200:
+        print("Failed to send typing indicator:", response.status_code, response.text)
 
 
 def send_message(recipient_id, message_text):
