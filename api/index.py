@@ -23,7 +23,7 @@ def hello():
 
 @app.route("/webhook", methods=["GET", "POST"])
 def get_method():
-    print("request: ", json.dumps(request))
+    print("request: ", request)
     if request.method == "GET":
         return handle_get(request)
     elif request.method == "POST":
@@ -43,7 +43,7 @@ def handle_get(request):
 def handle_post(request):
     try:
         body = request.get_json()
-        print("handle Message: ", json.dumps(body))
+        print("handle Message: ", body)
         for entry in body.get("entry", []):
             for messaging_event in entry.get("messaging", []):
                 if "message" in messaging_event:
