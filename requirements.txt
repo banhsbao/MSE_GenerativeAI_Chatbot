@@ -1,3 +1,11 @@
 Flask
 requests
 langchain-google-genai
+langchain
+langchain-community
+pypdf
+pdf2image
+tiktoken
+unstructured[local-inference]
+sentence_transformers
+chromadb

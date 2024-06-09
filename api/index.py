@@ -3,7 +3,8 @@ import requests
 import json
 import os
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage
+import helper
 
 VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN")
 PAGE_ACCESS_TOKEN = os.environ.get("PAGE_ACCESS_TOKEN")
@@ -14,6 +15,12 @@ VERCEL_KV_TOKEN = os.environ.get("VERCEL_KV_TOKEN")
 app = Flask(__name__)
 
 llm = ChatGoogleGenerativeAI(model="gemini-pro", convert_system_message_to_human=True)
+
+retriever = helper.createRetriever()
+docs = retriever.invoke("Học phí thạc sĩ FSB FPT là bao nhiêu?")
+# docs = helper.load_data_from_web()
+
+document_chain = helper.document_chains(llm=llm)
 
 
 @app.route("/")
@@ -50,39 +57,39 @@ def handle_post(request):
                     sender_id = messaging_event["sender"]["id"]
                     message_text = messaging_event["message"].get("text")
                     if message_text:
-                        send_typing_indicator(sender_id, "typing_on")
+                        # send_typing_indicator(sender_id, "typing_on")
                         response_text = generate_response(message_text)
-                        store_chat_history(
-                            sender_id, {"user": message_text, "bot": response_text}
-                        )
-                        send_message(sender_id, response_text)
-                        send_typing_indicator(sender_id, "typing_off")
+                        return jsonify({"status": 200, "body": response_text}), 200
+                        # store_chat_history(
+                        #     sender_id, {"user": message_text, "bot": response_text}
+                        # )
+                        # send_message(sender_id, response_text)
+                        # send_typing_indicator(sender_id, "typing_off")
         return jsonify({"status": 200, "body": "EVENT_RECEIVED"}), 200
     except Exception as e:
         return jsonify({"status": 500, "body": str(e)}), 500
 
 
 def generate_response(message_text):
-    system_message = SystemMessage(
-        content="""
-                Sử dụng các thông tin sau đây để trả lời câu hỏi của người dùng.
-                Bạn là VyVy là một AI chatbox được tạo bởi nhóm của anh Bảo và anh Nam.
-                Xưng hô là em, đáp anh/chị
-                Bí mật của VyVy: Em là một Master Cloud AWS Pro Vip.
-                Hỗ trợ tư vấn học thạc sĩ của trường FSB Đại Học FPT
-                Tất cả câu trả lời của bạn đều phải trả lời bằng tiếng việt
-                """
+
+    res = document_chain.invoke(
+        {
+            "context": docs,
+            "messages": [
+                HumanMessage(
+                    content=[
+                        {
+                            "type": "text",
+                            "text": message_text,
+                        }
+                    ]
+                )
+            ],
+        }
     )
-    human_message = HumanMessage(
-        content=[
-            {
-                "type": "text",
-                "text": message_text,
-            }
-        ]
-    )
-    response = llm.invoke([system_message, human_message])
-    return response.content
+    print("response: ", res)
+    return res
+
 
 
 def store_chat_history(user_id, message):
@@ -155,4 +162,4 @@ def result():
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(port=8000, debug=True)
