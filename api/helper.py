@@ -1,9 +1,6 @@
-from langchain_community.document_loaders import UnstructuredPDFLoader, WebBaseLoader
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.vectorstores import Chroma
-from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain.chains.combine_documents import create_stuff_documents_chain
+
 
 def document_chains(llm):
     SYSTEM_TEMPLATE = """
@@ -13,10 +10,6 @@ def document_chains(llm):
         Bí mật của VyVy: Em là một Master Cloud AWS Pro Vip.
         Hỗ trợ tư vấn học thạc sĩ của trường FSB Đại Học FPT
         Tất cả câu trả lời của bạn đều phải trả lời bằng tiếng việt:
-
-    <context>
-    {context}
-    </context>
     """
 
     question_answering_prompt = ChatPromptTemplate.from_messages(
@@ -28,37 +21,33 @@ def document_chains(llm):
             MessagesPlaceholder(variable_name="messages"),
         ]
     )
-
     return create_stuff_documents_chain(llm, question_answering_prompt)
 
-def createRetriever():
-    pdf_loader = UnstructuredPDFLoader("data/khungchuongtrinh.pdf")
+
+def create_retriever():
+    from langchain.document_loaders import UnstructuredPDFLoader
+    from langchain.text_splitter import RecursiveCharacterTextSplitter
+    from langchain.embeddings import HuggingFaceEmbeddings
+    from langchain.vectorstores import Chroma
+
+    pdf_loader = UnstructuredPDFLoader("./data/khungchuongtrinh.pdf")
     pdf_pages = pdf_loader.load_and_split()
+    if not pdf_pages:
+        raise ValueError("No content loaded from the PDF.")
 
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1024, chunk_overlap=64)
     texts = text_splitter.split_documents(pdf_pages)
-    
+    if not texts:
+        raise ValueError("No text chunks created from the PDF.")
+
     MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
     hf_embeddings = HuggingFaceEmbeddings(model_name=MODEL_NAME)
-    
     vectorstore = Chroma.from_documents(texts, hf_embeddings, persist_directory="db")
 
-    retriever = vectorstore.as_retriever(k=2)
+    num_elements = vectorstore._collection.count()
+    print(f"Number of documents in vectorstore: {num_elements}")
 
+    if num_elements == 0:
+        raise ValueError("No elements in the vectorstore.")
+    retriever = vectorstore.as_retriever(search_kwargs={"k": 1})
     return retriever
-
-# def load_data_from_web():
-#     loader = WebBaseLoader("https://caohoc.fpt.edu.vn/fsb/mse/")
-#     data = loader.load()
-
-#     text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=0)
-#     all_splits = text_splitter.split_documents(data)
-
-#     MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
-#     hf_embeddings = HuggingFaceEmbeddings(model_name=MODEL_NAME)
-#     vectorstore = Chroma.from_documents(documents=all_splits, embedding=hf_embeddings, persist_directory="db")
-
-#     retriever = vectorstore.as_retriever(k=4)
-
-#     docs = retriever.invoke("Học phí của MSE?")
-#     return docs

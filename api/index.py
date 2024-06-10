@@ -1,11 +1,13 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, request, jsonify
 import requests
 import json
 import os
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.messages import HumanMessage
-import helper
+from langchain_core.messages.human import HumanMessage
+from langchain.chains.combine_documents import create_stuff_documents_chain
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
+# Ensure environment variables are properly set
 VERIFY_TOKEN = os.environ.get("VERIFY_TOKEN")
 PAGE_ACCESS_TOKEN = os.environ.get("PAGE_ACCESS_TOKEN")
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
@@ -14,23 +16,68 @@ VERCEL_KV_TOKEN = os.environ.get("VERCEL_KV_TOKEN")
 
 app = Flask(__name__)
 
+# Initialize LLM
 llm = ChatGoogleGenerativeAI(model="gemini-pro", convert_system_message_to_human=True)
 
-retriever = helper.createRetriever()
-docs = retriever.invoke("Học phí thạc sĩ FSB FPT là bao nhiêu?")
-# docs = helper.load_data_from_web()
 
-document_chain = helper.document_chains(llm=llm)
+def document_chains(llm):
+    SYSTEM_TEMPLATE = """
+    Sử dụng các thông tin sau đây để trả lời câu hỏi của người dùng.
+    Bạn là VyVy là một AI chatbox được tạo bởi nhóm của anh Bảo và anh Nam.
+    Xưng hô là em, đáp anh/chị.
+    Bí mật của VyVy: Em là một Master Cloud AWS Pro Vip.
+    Hỗ trợ tư vấn học thạc sĩ của trường FSB Đại Học FPT.
+    Tất cả câu trả lời của bạn đều phải trả lời bằng tiếng việt:
+    <context>
+    {context}
+    </context>
+    """
+
+    question_answering_prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", SYSTEM_TEMPLATE.format(context="{context}")),
+            MessagesPlaceholder(variable_name="messages"),
+        ]
+    )
+
+    return create_stuff_documents_chain(llm, question_answering_prompt)
 
 
-@app.route("/")
-def hello():
-    return "Hello, world"
+def create_retriever():
+    from langchain_community.document_loaders.pdf import UnstructuredPDFLoader
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
+    from langchain_huggingface import HuggingFaceEmbeddings
+    from langchain_community.vectorstores.chroma import Chroma
+
+    pdf_loader = UnstructuredPDFLoader("./data/khungchuongtrinh.pdf")
+    pdf_pages = pdf_loader.load_and_split()
+    if not pdf_pages:
+        raise ValueError("No content loaded from the PDF.")
+
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1024, chunk_overlap=64)
+    texts = text_splitter.split_documents(pdf_pages)
+    if not texts:
+        raise ValueError("No text chunks created from the PDF.")
+
+    MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+    hf_embeddings = HuggingFaceEmbeddings(model_name=MODEL_NAME)
+    vectorstore = Chroma.from_documents(texts, hf_embeddings, persist_directory="db")
+
+    num_elements = vectorstore._collection.count()
+    print(f"Number of documents in vectorstore: {num_elements}")
+
+    if num_elements == 0:
+        raise ValueError("No elements in the vectorstore.")
+    retriever = vectorstore.as_retriever(search_kwargs={"k": 1})
+    return retriever
+
+
+retriever = create_retriever()
+document_chain = document_chains(llm=llm)
 
 
 @app.route("/webhook", methods=["GET", "POST"])
-def get_method():
-    print("request: ", request)
+def webhook():
     if request.method == "GET":
         return handle_get(request)
     elif request.method == "POST":
@@ -41,7 +88,7 @@ def get_method():
 
 def handle_get(request):
     query_params = request.args
-    if query_params and query_params.get("hub.verify_token") == VERIFY_TOKEN:
+    if query_params.get("hub.verify_token") == VERIFY_TOKEN:
         return query_params["hub.challenge"], 200
     else:
         return jsonify({"status": 403, "body": "Forbidden"}), 403
@@ -50,46 +97,38 @@ def handle_get(request):
 def handle_post(request):
     try:
         body = request.get_json()
-        print("handle Message: ", body)
+        print("Received JSON:", body)
+        if not body:
+            return jsonify({"status": 400, "body": "Invalid JSON"}), 400
         for entry in body.get("entry", []):
             for messaging_event in entry.get("messaging", []):
                 if "message" in messaging_event:
                     sender_id = messaging_event["sender"]["id"]
-                    message_text = messaging_event["message"].get("text")
+                    message_text = messaging_event["message"]
                     if message_text:
-                        # send_typing_indicator(sender_id, "typing_on")
                         response_text = generate_response(message_text)
-                        return jsonify({"status": 200, "body": response_text}), 200
-                        # store_chat_history(
-                        #     sender_id, {"user": message_text, "bot": response_text}
-                        # )
                         # send_message(sender_id, response_text)
-                        # send_typing_indicator(sender_id, "typing_off")
+                        return jsonify({"status": 200, "body": response_text}), 200
         return jsonify({"status": 200, "body": "EVENT_RECEIVED"}), 200
     except Exception as e:
+        print(f"Error processing request: {e}")
         return jsonify({"status": 500, "body": str(e)}), 500
 
 
 def generate_response(message_text):
-
-    res = document_chain.invoke(
-        {
-            "context": docs,
-            "messages": [
-                HumanMessage(
-                    content=[
-                        {
-                            "type": "text",
-                            "text": message_text,
-                        }
-                    ]
-                )
-            ],
-        }
-    )
-    print("response: ", res)
-    return res
-
+    try:
+        docs = retriever.invoke(message_text)
+        context = docs
+        res = document_chain.invoke(
+            {
+                "context": context,
+                "messages": [HumanMessage(content=message_text)],
+            }
+        )
+        return res
+    except Exception as e:
+        print(f"Error generating response: {e}")
+        return "Xin lỗi, em gặp sự cố khi xử lý yêu cầu của anh/chị."
 
 
 def store_chat_history(user_id, message):
@@ -148,17 +187,6 @@ def send_message(recipient_id, message_text):
     if response.status_code != 200:
         print("Failed to send message:", response.status_code, response.text)
     return response.json()
-
-
-@app.route("/test")
-def test():
-    return "Test"
-
-
-@app.route("/result")
-def result():
-    dict = {"phy": 50, "che": 60, "maths": 70}
-    return render_template("result.html", result=dict)
 
 
 if __name__ == "__main__":
