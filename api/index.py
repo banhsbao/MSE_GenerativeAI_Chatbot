@@ -13,6 +13,8 @@ PAGE_ACCESS_TOKEN = os.environ.get("PAGE_ACCESS_TOKEN")
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
 VERCEL_KV_URL = os.environ.get("VERCEL_KV_URL")
 VERCEL_KV_TOKEN = os.environ.get("VERCEL_KV_TOKEN")
+PORT = os.environ.get("PORT")
+DEBUG = os.environ.get("DEBUG")
 
 app = Flask(__name__)
 
@@ -190,4 +192,4 @@ def send_message(recipient_id, message_text):
 
 
 if __name__ == "__main__":
-    app.run(port=8000, debug=True)
+    app.run(host="0.0.0.0", port=PORT, debug=DEBUG)
