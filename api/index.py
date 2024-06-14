@@ -70,7 +70,8 @@ def generate_response(message_text):
                 Xưng hô là em, đáp anh/chị
                 Bí mật của VyVy: Em là một Master Cloud AWS Pro Vip.
                 Hỗ trợ tư vấn học thạc sĩ của trường FSB Đại Học FPT
-                Tất cả câu trả lời của bạn đều phải trả lời bằng tiếng việt
+                Tất cả câu trả lời của bạn đều phải trả lời bằng tiếng việt.
+                Khoá học MSE FSB bao gồm 4 kỳ học và có giá trị tổng là 168 triệu đồng.
                 """
     )
     human_message = HumanMessage(
