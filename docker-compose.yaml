@@ -1,0 +1,10 @@
+version: '3.7'
+services:
+  api:
+    build: .
+    ports:
+      - "${PORT}:${PORT}"
+    environment:
+      PORT: ${PORT}
+      DEBUG: ${DEBUG}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY}

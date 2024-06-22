@@ -1,1 +1,3 @@
 .vercel
+db/
+script.sh
